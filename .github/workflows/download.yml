@@ -1,1 +1,58 @@
 
+name: Scarica video Vixcloud
+run-name: Download Vixcloud manuale
+
+on:
+  workflow_dispatch:
+    inputs:
+      video_url:
+        description: URL Vixcloud del video
+        required: true
+        type: string
+      rights_confirmed:
+        description: Confermo di avere i diritti o che il video è di pubblico dominio
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  download:
+    name: Scarica e prepara il file
+    if: ${{ inputs.rights_confirmed }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    steps:
+      - name: Recupera il codice
+        uses: actions/checkout@v7
+
+      - name: Configura Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+
+      - name: Installa le dipendenze
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          if ! command -v ffmpeg >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install --yes ffmpeg
+          fi
+
+      - name: Scarica il video
+        env:
+          VIDEO_URL: ${{ inputs.video_url }}
+        run: python download.py "$VIDEO_URL" --output-dir downloads
+
+      - name: Pubblica il file scaricabile
+        uses: actions/upload-artifact@v7
+        with:
+          name: video-vixcloud-${{ github.run_id }}
+          path: downloads/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 3
