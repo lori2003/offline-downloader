@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Downloader Tarocco</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body>
+  <h1>Incolla URL vixcloud</h1>
+  <input type="text" id="url" placeholder="https://vixcloud.co/..." style="width:80%; padding:10px;">
+  <button onclick="startDownload()">Scarica</button>
+  <p>Poi vai su GitHub Actions per confermare.</p>
+  <script>
+    function startDownload() {
+      const url = document.getElementById('url').value;
+      if(!url) return alert('Metti un URL, coglione!');
+      // Reindirizza direttamente alla pagina del workflow con parametro precompilato (funziona?)
+      // Ma non si può precompilare senza token. Quindi apri semplicemente la pagina Actions:
+      window.open('https://github.com/tuo-username/tuo-repo/actions/workflows/download.yml', '_blank');
+      alert('Ora vai su Actions, clicca "Run workflow" e incolla lo stesso URL.');
+    }
+  </script>
+</body>
+</html>
