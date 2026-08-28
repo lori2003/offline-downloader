@@ -43,12 +43,45 @@ jobs:
             sudo apt-get install --yes ffmpeg
           fi
 
+      - name: Prepara e protegge l'URL nei log pubblici
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          event = json.loads(Path(os.environ["GITHUB_EVENT_PATH"]).read_text())
+          video_url = event["inputs"]["video_url"]
+          print(f"::add-mask::{video_url}")
+          Path(os.environ["RUNNER_TEMP"], "video_url.txt").write_text(video_url)
+          PY
+
       - name: Scarica il video
-        env:
-          VIDEO_URL: ${{ inputs.video_url }}
-        run: python download.py "$VIDEO_URL" --output-dir downloads
+        id: download
+        run: |
+          echo "### ⏳ Download avviato" >> "$GITHUB_STEP_SUMMARY"
+          echo "Apri il passaggio **Scarica il video** per vedere percentuale, velocità e tempo residuo." >> "$GITHUB_STEP_SUMMARY"
+          echo "::notice title=Download avviato::Gli aggiornamenti appariranno qui ogni 5%."
+
+          VIDEO_URL="$(< "$RUNNER_TEMP/video_url.txt")"
+          set +e
+          python -u download.py "$VIDEO_URL" --output-dir downloads
+          exit_code=$?
+          set -e
+
+          if [ "$exit_code" -eq 0 ]; then
+            echo "### ✅ Download completato" >> "$GITHUB_STEP_SUMMARY"
+            echo "Il video è stato scaricato. Ora GitHub sta preparando l'artefatto." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "### ❌ Download non riuscito" >> "$GITHUB_STEP_SUMMARY"
+            echo "Apri il passaggio **Scarica il video** per leggere il motivo dell'errore." >> "$GITHUB_STEP_SUMMARY"
+            echo "::error title=Download non riuscito::Controlla il messaggio nel passaggio Scarica il video."
+          fi
+
+          exit "$exit_code"
 
       - name: Pubblica il file scaricabile
+        id: artifact
         uses: actions/upload-artifact@v7
         with:
           name: video-vixcloud-${{ github.run_id }}
@@ -56,3 +89,9 @@ jobs:
           if-no-files-found: error
           compression-level: 0
           retention-days: 3
+
+      - name: Conferma il file pronto
+        if: success()
+        run: |
+          echo "### 📦 File pronto da scaricare" >> "$GITHUB_STEP_SUMMARY"
+          echo "Trovi **video-vixcloud-${{ github.run_id }}** nella sezione Artifacts in fondo a questa pagina." >> "$GITHUB_STEP_SUMMARY"

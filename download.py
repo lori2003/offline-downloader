@@ -5,8 +5,10 @@ from __future__ import annotations
 
 import argparse
 import html
+import os
 import re
 import sys
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
@@ -29,6 +31,8 @@ EXPIRES_RE = re.compile(r"['\"]expires['\"]\s*:\s*['\"]?(\d+)['\"]?")
 STREAM_URL_RE = re.compile(r"\burl\s*:\s*['\"]([^'\"\r\n]+)['\"]")
 FHD_RE = re.compile(r"window\.canPlayFHD\s*=\s*true", re.IGNORECASE)
 SECRET_QUERY_RE = re.compile(r"(?i)(token|expires)=([^&\s]+)")
+ENCODED_LINE_BREAK_RE = re.compile(r"%0[ad]", re.IGNORECASE)
+INVISIBLE_WHITESPACE_RE = re.compile(r"[\s\u200b-\u200d\ufeff]+")
 
 
 class URLValidationError(ValueError):
@@ -46,6 +50,83 @@ class ResolvedVideo:
     extracted_from_player: bool
 
 
+class DownloadProgress:
+    """Print compact, unbuffered progress updates suitable for GitHub logs."""
+
+    def __init__(self) -> None:
+        self._last_bucket = -1
+        self._last_update = 0.0
+
+    def __call__(self, data: dict) -> None:
+        status = data.get("status")
+        if status == "finished":
+            print("AVANZAMENTO: 100% — download completato, preparo il file...", flush=True)
+            return
+        if status != "downloading":
+            return
+
+        downloaded = data.get("downloaded_bytes") or 0
+        total = data.get("total_bytes") or data.get("total_bytes_estimate") or 0
+        fragment_index = data.get("fragment_index") or 0
+        fragment_count = data.get("fragment_count") or 0
+
+        current = downloaded
+        maximum = total
+        unit_label = ""
+        if not maximum and fragment_count:
+            current = fragment_index
+            maximum = fragment_count
+            unit_label = f" | frammento {fragment_index}/{fragment_count}"
+
+        now = time.monotonic()
+        if maximum:
+            percent = min(100.0, current * 100 / maximum)
+            bucket = int(percent // 5)
+            if bucket == self._last_bucket and now - self._last_update < 30:
+                return
+            self._last_bucket = bucket
+            percent_label = f"{percent:5.1f}%"
+        else:
+            if now - self._last_update < 30:
+                return
+            percent_label = "in corso"
+
+        self._last_update = now
+        details = []
+        if downloaded:
+            size_label = _format_bytes(downloaded)
+            if total:
+                size_label += f" / {_format_bytes(total)}"
+            details.append(size_label)
+        if data.get("speed"):
+            details.append(f"{_format_bytes(data['speed'])}/s")
+        if data.get("eta") is not None:
+            details.append(f"restano {_format_duration(data['eta'])}")
+
+        suffix = f" | {' | '.join(details)}" if details else ""
+        print(f"AVANZAMENTO: {percent_label}{unit_label}{suffix}", flush=True)
+
+
+class RedactingLogger:
+    """Keep expiring Vixcloud tokens out of normal and error logs."""
+
+    @staticmethod
+    def debug(_message: str) -> None:
+        return
+
+    @staticmethod
+    def info(_message: str) -> None:
+        return
+
+    @staticmethod
+    def warning(message: str) -> None:
+        print(f"AVVISO yt-dlp: {_redact_secrets(message)}", file=sys.stderr, flush=True)
+
+    @staticmethod
+    def error(message: str) -> None:
+        print(f"ERRORE yt-dlp: {_redact_secrets(message)}", file=sys.stderr, flush=True)
+
+
 def _is_allowed_hostname(hostname: str) -> bool:
     hostname = hostname.lower().rstrip(".")
     return any(
@@ -54,9 +135,15 @@ def _is_allowed_hostname(hostname: str) -> bool:
     )
 
 
+def normalize_video_url(value: str) -> str:
+    """Remove line wraps accidentally introduced while copying a player URL."""
+    without_whitespace = INVISIBLE_WHITESPACE_RE.sub("", value)
+    return ENCODED_LINE_BREAK_RE.sub("", without_whitespace)
+
+
 def validate_video_url(value: str) -> str:
     """Return a normalised Vixcloud URL or raise a readable error."""
-    url = value.strip()
+    url = normalize_video_url(value)
     parsed = urlparse(url)
 
     if parsed.scheme not in {"http", "https"}:
@@ -150,6 +237,26 @@ def _redact_secrets(message: str) -> str:
     return SECRET_QUERY_RE.sub(r"\1=***", message)
 
 
+def _format_bytes(value: float) -> str:
+    size = float(value)
+    for unit in ("B", "KiB", "MiB", "GiB", "TiB"):
+        if abs(size) < 1024 or unit == "TiB":
+            return f"{size:.1f} {unit}"
+        size /= 1024
+    return f"{size:.1f} TiB"
+
+
+def _format_duration(seconds: float) -> str:
+    remaining = max(0, int(seconds))
+    hours, remainder = divmod(remaining, 3600)
+    minutes, seconds = divmod(remainder, 60)
+    if hours:
+        return f"{hours}h {minutes:02d}m"
+    if minutes:
+        return f"{minutes}m {seconds:02d}s"
+    return f"{seconds}s"
+
+
 def download_video(url: str, output_dir: str | Path = "downloads") -> list[Path]:
     """Download one Vixcloud video and return the media files produced."""
     destination = Path(output_dir).resolve()
@@ -178,6 +285,7 @@ def download_video(url: str, output_dir: str | Path = "downloads") -> list[Path]
         "Referer": resolved.referer,
         "User-Agent": USER_AGENT,
     }
+    progress = DownloadProgress()
     ydl_options = {
         "continuedl": True,
         "concurrent_fragment_downloads": 4,
@@ -185,10 +293,12 @@ def download_video(url: str, output_dir: str | Path = "downloads") -> list[Path]
         "fragment_retries": 10,
         "http_headers": http_headers,
         "ignoreconfig": True,
+        "logger": RedactingLogger(),
         "merge_output_format": "mp4",
         "noplaylist": True,
         "outtmpl": str(destination / "%(title).150B [%(id)s].%(ext)s"),
         "overwrites": False,
+        "progress_hooks": [progress],
         "quiet": True,
         "retries": 10,
         "socket_timeout": 30,
@@ -198,7 +308,8 @@ def download_video(url: str, output_dir: str | Path = "downloads") -> list[Path]
     print(
         "Player Vixcloud risolto. Avvio il download..."
         if resolved.extracted_from_player
-        else "Avvio il download con yt-dlp..."
+        else "URL Vixcloud pronto. Avvio il download...",
+        flush=True,
     )
     with yt_dlp.YoutubeDL(ydl_options) as ydl:
         ydl.extract_info(resolved.url, download=True)
@@ -236,8 +347,11 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    normalised_url = normalize_video_url(args.url)
+    if os.environ.get("GITHUB_ACTIONS") == "true":
+        print(f"::add-mask::{normalised_url}", flush=True)
     try:
-        download_video(args.url, args.output_dir)
+        download_video(normalised_url, args.output_dir)
     except (URLValidationError, DownloadResultError, yt_dlp.utils.DownloadError) as exc:
         print(f"ERRORE: {_redact_secrets(str(exc))}", file=sys.stderr)
         return 1

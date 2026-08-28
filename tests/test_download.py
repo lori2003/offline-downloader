@@ -19,6 +19,16 @@ const video = {
 
 
 class URLValidationTests(unittest.TestCase):
+    def test_removes_literal_and_encoded_line_breaks_from_copied_url(self):
+        dirty_url = (
+            "https://vixcloud.co/playlist/42?%0Ab=1&token=abc%0A123\n"
+            "&expires=2000000000"
+        )
+        self.assertEqual(
+            download.validate_video_url(dirty_url),
+            "https://vixcloud.co/playlist/42?b=1&token=abc123&expires=2000000000",
+        )
+
     def test_accepts_vixcloud_and_subdomains(self):
         self.assertEqual(
             download.validate_video_url("https://vixcloud.co/embed/42"),
@@ -101,6 +111,29 @@ class DownloadTests(unittest.TestCase):
                 files = download.download_video(direct_url, temporary_directory)
 
         self.assertEqual([path.name for path in files], ["Film [42].mp4"])
+
+
+class ProgressTests(unittest.TestCase):
+    def test_progress_reports_percentage_and_completion(self):
+        progress = download.DownloadProgress()
+        with patch("builtins.print") as mocked_print:
+            progress(
+                {
+                    "status": "downloading",
+                    "downloaded_bytes": 50,
+                    "total_bytes": 100,
+                    "speed": 10,
+                    "eta": 5,
+                }
+            )
+            progress({"status": "finished"})
+
+        messages = [call.args[0] for call in mocked_print.call_args_list]
+        self.assertIn("AVANZAMENTO:  50.0% | 50.0 B / 100.0 B | 10.0 B/s | restano 5s", messages)
+        self.assertIn(
+            "AVANZAMENTO: 100% — download completato, preparo il file...",
+            messages,
+        )
 
 
 if __name__ == "__main__":

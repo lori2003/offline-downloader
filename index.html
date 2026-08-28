@@ -210,6 +210,10 @@
       const workflowUrl =
         "https://github.com/lori2003/offline-downloader/actions/workflows/download.yml";
 
+      function normalizeVixcloudUrl(value) {
+        return value.replace(/[\s\u200B-\u200D\uFEFF]+/g, "").replace(/%0[ad]/gi, "");
+      }
+
       function isVixcloudUrl(value) {
         try {
           const parsed = new URL(value);
@@ -237,7 +241,8 @@
       form.addEventListener("submit", async (event) => {
         event.preventDefault();
         status.className = "";
-        const value = input.value.trim();
+        const originalValue = input.value;
+        const value = normalizeVixcloudUrl(originalValue);
 
         if (!isVixcloudUrl(value)) {
           status.textContent = "Inserisci un URL vixcloud.co valido.";
@@ -248,7 +253,10 @@
         try {
           await copyUrl(value);
           status.className = "success";
-          status.textContent = "URL copiato. Incollalo nel campo video_url su GitHub.";
+          status.textContent =
+            value === originalValue.trim()
+              ? "URL copiato. Incollalo nel campo video_url su GitHub."
+              : "URL ripulito dai ritorni a capo e copiato. Ora incollalo su GitHub.";
         } catch {
           status.className = "success";
           status.textContent = "Copia manualmente l’URL, poi incollalo su GitHub.";

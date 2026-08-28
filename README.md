@@ -10,7 +10,9 @@ pubblico dominio; non aggira DRM, login o controlli di accesso.
 2. Premi **Run workflow**.
 3. Incolla un URL `vixcloud.co` del player o una playlist `.m3u8`.
 4. Spunta la conferma relativa ai diritti e avvia il workflow.
-5. Al termine apri l'esecuzione e scarica l'artefatto `video-vixcloud-*`.
+5. Apri l'esecuzione e poi il passaggio **Scarica il video**: durante il lavoro
+   mostra percentuale, quantità scaricata, velocità e tempo residuo.
+6. Al termine scarica l'artefatto `video-vixcloud-*` in fondo al riepilogo.
 
 L'artefatto resta disponibile per 3 giorni. La pagina GitHub Pages inclusa nella
 repo copia l'URL e apre direttamente il workflow corretto; un sito statico non
@@ -29,9 +31,11 @@ Il programma:
 
 - accetta solo `vixcloud.co` e relativi sottodomini;
 - riconosce i parametri temporanei presenti nel player Vixcloud;
+- rimuove ritorni a capo letterali o `%0A` inseriti accidentalmente copiando il link;
 - preserva correttamente i parametri già presenti nella playlist;
 - usa `yt-dlp` come downloader HLS con tentativi automatici;
-- evita di stampare deliberatamente URL e token nei log.
+- mostra un avanzamento compatto nei log e un riepilogo finale verde o rosso;
+- maschera URL e token nei nuovi log di Actions.
 
 ## Limiti e risoluzione problemi
 
