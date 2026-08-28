@@ -16,6 +16,7 @@ from urllib.parse import parse_qsl, urlencode, urljoin, urlparse, urlunparse
 from urllib.request import Request, urlopen
 
 import yt_dlp
+from yt_dlp.networking.impersonate import ImpersonateTarget
 
 
 ALLOWED_DOMAINS = ("vixcloud.co",)
@@ -205,9 +206,15 @@ def resolve_video_url(
     receives the original URL so its generic extractor still gets a chance.
     """
     url = validate_video_url(url)
-    path = urlparse(url).path.lower()
+    parsed_url = urlparse(url)
+    path = parsed_url.path.lower()
     if path.endswith(".m3u8") or "/playlist/" in path:
-        return ResolvedVideo(url=url, referer=url, extracted_from_player=False)
+        root_referer = f"{parsed_url.scheme}://{parsed_url.netloc}/"
+        return ResolvedVideo(
+            url=url,
+            referer=root_referer,
+            extracted_from_player=False,
+        )
 
     player_html = fetch_html(url)
     token_match = TOKEN_RE.search(player_html)
@@ -293,6 +300,7 @@ def download_video(url: str, output_dir: str | Path = "downloads") -> list[Path]
         "fragment_retries": 10,
         "http_headers": http_headers,
         "ignoreconfig": True,
+        "impersonate": ImpersonateTarget(client="chrome"),
         "logger": RedactingLogger(),
         "merge_output_format": "mp4",
         "noplaylist": True,

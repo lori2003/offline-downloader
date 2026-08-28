@@ -34,6 +34,7 @@ Il programma:
 - rimuove ritorni a capo letterali o `%0A` inseriti accidentalmente copiando il link;
 - preserva correttamente i parametri già presenti nella playlist;
 - usa `yt-dlp` come downloader HLS con tentativi automatici;
+- presenta le richieste come un browser Chrome e usa un Referer Vixcloud valido;
 - mostra un avanzamento compatto nei log e un riepilogo finale verde o rosso;
 - maschera URL e token nei nuovi log di Actions.
 

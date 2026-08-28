@@ -71,6 +71,7 @@ class ResolverTests(unittest.TestCase):
             fetch_html=lambda _: self.fail("fetch_html must not be called"),
         )
         self.assertFalse(resolved.extracted_from_player)
+        self.assertEqual(resolved.referer, "https://vixcloud.co/")
         self.assertEqual(
             resolved.url, "https://vixcloud.co/playlist/42.m3u8?token=x"
         )
